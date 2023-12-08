@@ -5,11 +5,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, Length, EqualTo
+from datetime import datetime
+from flask_migrate import Migrate
+from flask_wtf import FlaskForm
+from wtforms import StringField, TextAreaField, SubmitField, DateField
+from wtforms.validators import DataRequired
+from wtforms.validators import DataRequired, Optional
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///libraryhub.db'
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -31,6 +38,15 @@ class LoginForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Login')
 
+class BookForm(FlaskForm):
+    title = StringField('Title', validators=[DataRequired()])
+    author = StringField('Author', validators=[DataRequired()])
+    review = TextAreaField('Review')
+    borrow_date = DateField('Borrow Date', format='%Y-%m-%d', validators=[Optional()])
+    return_date = DateField('Return Date', format='%Y-%m-%d', validators=[Optional()])
+    submit = SubmitField('Add Book')
+
+
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
@@ -42,8 +58,11 @@ class Book(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     author = db.Column(db.String(200), nullable=False)
+    review = db.Column(db.Text, nullable=True)  # New field for review
+    borrow_date = db.Column(db.Date, nullable=True)  # New field for borrow date
+    return_date = db.Column(db.Date, nullable=True)  # New field for return date
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-
+    
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -81,13 +100,25 @@ def login():
 @app.route('/edit-book/<int:book_id>', methods=['GET', 'POST'])
 @login_required
 def edit_book(book_id):
-    book = Book.query.get(book_id)
+    book = Book.query.get_or_404(book_id)
     if request.method == 'POST':
         book.title = request.form['title']
         book.author = request.form['author']
+        book.review = request.form.get('review')
+        book.borrow_date = datetime.strptime(request.form['borrow_date'], '%Y-%m-%d').date() if request.form['borrow_date'] else None
+        book.return_date = datetime.strptime(request.form['return_date'], '%Y-%m-%d').date() if request.form['return_date'] else None
         db.session.commit()
+        flash('Book updated successfully!')
         return redirect(url_for('dashboard'))
     return render_template('edit_book.html', book=book)
+
+@app.template_filter('format_date')
+def format_date(value, format='%Y-%m-%d'):
+    """Format a date for displaying in HTML input fields."""
+    if value is not None:
+        return value.strftime(format)
+    return ''
+
 
 
 @app.route('/delete-book/<int:book_id>')
@@ -114,15 +145,36 @@ def index():
 @app.route('/dashboard', methods=['GET', 'POST'])
 @login_required
 def dashboard():
-    if request.method == 'POST':
-        title = request.form['title']
-        author = request.form['author']
-        new_book = Book(title=title, author=author, user_id=current_user.id)
-        db.session.add(new_book)
-        db.session.commit()
-        flash('Book added successfully!', 'success')
+    form = BookForm()
+    if form.validate_on_submit():
+        try:
+            # Check if dates are provided and convert them if necessary
+            borrow_date = form.borrow_date.data
+            return_date = form.return_date.data
+
+            new_book = Book(
+                title=form.title.data,
+                author=form.author.data,
+                review=form.review.data,
+                borrow_date=borrow_date,
+                return_date=return_date,
+                user_id=current_user.id
+            )
+            db.session.add(new_book)
+            db.session.commit()
+            flash('Book added successfully!', 'success')
+        except Exception as e:
+            flash(str(e), 'danger')
+            return render_template('dashboard.html', form=form)
+
     books = Book.query.filter_by(user_id=current_user.id).all()
-    return render_template('dashboard.html', books=books)
+    return render_template('dashboard.html', form=form, books=books)
+
+@app.template_filter('to_string')
+def to_string(value):
+    return value.strftime('%Y-%m-%d') if value else ''
+
+
 
 
 if __name__ == "__main__":
