@@ -5,16 +5,28 @@
 
 <h3>Add Book</h3>
 <form method="post">
-    Title: <input type="text" name="title">
-    Author: <input type="text" name="author">
-    <input type="submit" value="Add Book">
+    {{ form.hidden_tag() }}
+    {{ form.title.label }} {{ form.title() }}<br>
+    {{ form.author.label }} {{ form.author() }}<br>
+    {{ form.review.label }} {{ form.review() }}<br>
+    {{ form.borrow_date.label }} {{ form.borrow_date() }}<br>
+    {{ form.return_date.label }} {{ form.return_date() }}<br>
+    {{ form.submit() }}
 </form>
 
+
+
+<!-- List of Books -->
 <h3>Your Books</h3>
 <ul>
 {% for book in books %}
     <li>
-        {{ book.title }} by {{ book.author }} 
+        {{ book.title }} by {{ book.author }}
+        <!-- Display review, borrow date, and return date if available -->
+        {% if book.review %}<p>Review: {{ book.review }}</p>{% endif %}
+        {% if book.borrow_date %}<p>Borrowed On: {{ book.borrow_date }}</p>{% endif %}
+        {% if book.return_date %}<p>Return By: {{ book.return_date }}</p>{% endif %}
+        <!-- Edit and Delete Links -->
         <a href="{{ url_for('edit_book', book_id=book.id) }}">Edit</a> 
         <a href="{{ url_for('delete_book', book_id=book.id) }}">Delete</a>
     </li>
